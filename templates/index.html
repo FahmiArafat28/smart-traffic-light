@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Traffic Light — Fuzzy Logic</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+</head>
+<body>
+
+<header>
+    <div class="badge">Fuzzy Logic · Mamdani · Perempatan 4 Simpang</div>
+    <h1>Smart <span>Traffic</span> Light</h1>
+    <p>// Sistem Kendali Lampu Lalu Lintas Adaptif</p>
+</header>
+
+<div class="tabs">
+    <button class="tab-btn active" data-tab="tab-simulasi" onclick="switchTab('tab-simulasi')">Simulasi</button>
+    <button class="tab-btn" data-tab="tab-dataset"  onclick="switchTab('tab-dataset')">Dataset</button>
+    <button class="tab-btn" data-tab="tab-batch"    onclick="switchTab('tab-batch')">Batch Fuzzy</button>
+    <button class="tab-btn" data-tab="tab-rules"    onclick="switchTab('tab-rules')">Aturan Fuzzy</button>
+</div>
+
+<!-- ===== TAB 1: SIMULASI ===== -->
+<div class="tab-panel active" id="tab-simulasi">
+
+    <div class="card" style="margin-bottom:20px">
+        <div class="card-title">// Input Per Simpang</div>
+        <div class="four-input-grid">
+
+            <div class="simpang-input">
+                <div class="simpang-label">⬆ Utara</div>
+                <div class="input-group">
+                    <label>Kendaraan <span class="val" id="valK-utara">0</span></label>
+                    <input type="range" id="k-utara" min="0" max="50" value="0"
+                           oninput="updateKendaraan('utara', this.value)">
+                    <div class="range-labels"><span>0</span><span>25</span><span>50</span></div>
+                </div>
+                <div class="auto-waktu-box">
+                    <span class="auto-label">Waktu Tunggu (otomatis)</span>
+                    <span class="auto-val" id="autoW-utara">0 dtk</span>
+                </div>
+            </div>
+
+            <div class="simpang-input">
+                <div class="simpang-label">⬇ Selatan</div>
+                <div class="input-group">
+                    <label>Kendaraan <span class="val" id="valK-selatan">0</span></label>
+                    <input type="range" id="k-selatan" min="0" max="50" value="0"
+                           oninput="updateKendaraan('selatan', this.value)">
+                    <div class="range-labels"><span>0</span><span>25</span><span>50</span></div>
+                </div>
+                <div class="auto-waktu-box">
+                    <span class="auto-label">Waktu Tunggu (otomatis)</span>
+                    <span class="auto-val" id="autoW-selatan">0 dtk</span>
+                </div>
+            </div>
+
+            <div class="simpang-input">
+                <div class="simpang-label">➡ Timur</div>
+                <div class="input-group">
+                    <label>Kendaraan <span class="val" id="valK-timur">0</span></label>
+                    <input type="range" id="k-timur" min="0" max="50" value="0"
+                           oninput="updateKendaraan('timur', this.value)">
+                    <div class="range-labels"><span>0</span><span>25</span><span>50</span></div>
+                </div>
+                <div class="auto-waktu-box">
+                    <span class="auto-label">Waktu Tunggu (otomatis)</span>
+                    <span class="auto-val" id="autoW-timur">0 dtk</span>
+                </div>
+            </div>
+
+            <div class="simpang-input">
+                <div class="simpang-label">⬅ Barat</div>
+                <div class="input-group">
+                    <label>Kendaraan <span class="val" id="valK-barat">0</span></label>
+                    <input type="range" id="k-barat" min="0" max="50" value="0"
+                           oninput="updateKendaraan('barat', this.value)">
+                    <div class="range-labels"><span>0</span><span>25</span><span>50</span></div>
+                </div>
+                <div class="auto-waktu-box">
+                    <span class="auto-label">Waktu Tunggu (otomatis)</span>
+                    <span class="auto-val" id="autoW-barat">0 dtk</span>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="btn-group">
+            <button class="btn btn-primary" id="btnJalankan" onclick="hitungPerempatan()">▶ Jalankan Simulasi</button>
+            <button class="btn btn-stop"    id="btnStop"     onclick="stopSimulasi()" disabled>■ Stop</button>
+        </div>
+        <div class="status-bar" id="statusBar" style="margin-top:10px;text-align:center">
+            Atur jumlah kendaraan tiap simpang lalu klik Jalankan
+        </div>
+    </div>
+
+    <!-- Visualisasi Perempatan -->
+    <div class="card">
+        <div class="card-title">// Visualisasi Perempatan</div>
+        <div class="perempatan-wrap">
+
+            <div class="simpang-box pos-utara">
+                <div class="simpang-nama">Utara</div>
+                <div class="tiang-mini">
+                    <div class="lamp-mini" id="lm-utara-merah"></div>
+                    <div class="lamp-mini" id="lm-utara-kuning"></div>
+                    <div class="lamp-mini" id="lm-utara-hijau"></div>
+                </div>
+                <div class="simpang-info" id="info-utara">— dtk</div>
+            </div>
+
+            <div class="simpang-box pos-barat">
+                <div class="simpang-nama">Barat</div>
+                <div class="tiang-mini tiang-horiz">
+                    <div class="lamp-mini" id="lm-barat-merah"></div>
+                    <div class="lamp-mini" id="lm-barat-kuning"></div>
+                    <div class="lamp-mini" id="lm-barat-hijau"></div>
+                </div>
+                <div class="simpang-info" id="info-barat">— dtk</div>
+            </div>
+
+            <div class="tengah-persimpangan">
+                <div class="jalan jalan-vertikal"></div>
+                <div class="jalan jalan-horizontal"></div>
+                <div class="pusat-dot"></div>
+            </div>
+
+            <div class="simpang-box pos-timur">
+                <div class="simpang-nama">Timur</div>
+                <div class="tiang-mini tiang-horiz">
+                    <div class="lamp-mini" id="lm-timur-merah"></div>
+                    <div class="lamp-mini" id="lm-timur-kuning"></div>
+                    <div class="lamp-mini" id="lm-timur-hijau"></div>
+                </div>
+                <div class="simpang-info" id="info-timur">— dtk</div>
+            </div>
+
+            <div class="simpang-box pos-selatan">
+                <div class="simpang-nama">Selatan</div>
+                <div class="tiang-mini">
+                    <div class="lamp-mini" id="lm-selatan-merah"></div>
+                    <div class="lamp-mini" id="lm-selatan-kuning"></div>
+                    <div class="lamp-mini" id="lm-selatan-hijau"></div>
+                </div>
+                <div class="simpang-info" id="info-selatan">— dtk</div>
+            </div>
+
+        </div>
+
+        <div class="hasil-grid" id="hasilGrid" style="display:none">
+            <div class="hasil-box" id="hb-utara">
+                <div class="hasil-arah">⬆ Utara</div>
+                <div class="hasil-durasi" id="hd-utara">—</div>
+                <div class="hasil-kat" id="hk-utara">—</div>
+                <div class="hasil-waktu-auto" id="hw-utara">tunggu: — dtk</div>
+            </div>
+            <div class="hasil-box" id="hb-selatan">
+                <div class="hasil-arah">⬇ Selatan</div>
+                <div class="hasil-durasi" id="hd-selatan">—</div>
+                <div class="hasil-kat" id="hk-selatan">—</div>
+                <div class="hasil-waktu-auto" id="hw-selatan">tunggu: — dtk</div>
+            </div>
+            <div class="hasil-box" id="hb-timur">
+                <div class="hasil-arah">➡ Timur</div>
+                <div class="hasil-durasi" id="hd-timur">—</div>
+                <div class="hasil-kat" id="hk-timur">—</div>
+                <div class="hasil-waktu-auto" id="hw-timur">tunggu: — dtk</div>
+            </div>
+            <div class="hasil-box" id="hb-barat">
+                <div class="hasil-arah">⬅ Barat</div>
+                <div class="hasil-durasi" id="hd-barat">—</div>
+                <div class="hasil-kat" id="hk-barat">—</div>
+                <div class="hasil-waktu-auto" id="hw-barat">tunggu: — dtk</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== TAB 2: DATASET ===== -->
+<div class="tab-panel" id="tab-dataset">
+    <div class="stats-grid">
+        <div class="stat-box">
+            <div class="stat-val" id="statTotal">—</div>
+            <div class="stat-lbl">Total Data</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-val" id="statMaxKend">—</div>
+            <div class="stat-lbl">Maks Kendaraan</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-val" id="statAvgKend">—</div>
+            <div class="stat-lbl">Rata-rata Kendaraan</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-val" id="statHariSibuk">—</div>
+            <div class="stat-lbl">Hari Tersibuk</div>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-title">// Dataset Kendaraan (180 record)</div>
+        <div class="table-wrap">
+            <table class="ds-table">
+                <thead>
+                    <tr>
+                        <th>#</th><th>Hari</th><th>Waktu</th>
+                        <th>Kendaraan Asli</th><th>Norm (0-50)</th>
+                        <th>Tunggu Auto (dtk)</th><th>Kondisi</th>
+                    </tr>
+                </thead>
+                <tbody id="dsTbody">
+                    <tr><td colspan="7">
+                        <div class="loading-wrap"><span class="spinner"></span> Memuat data...</div>
+                    </td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ===== TAB 3: BATCH FUZZY ===== -->
+<div class="tab-panel" id="tab-batch">
+    <div class="card" style="margin-bottom:16px">
+        <div class="card-title">// Batch Processing — Semua Dataset</div>
+        <p style="font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:16px">
+            Waktu tunggu dihitung otomatis dari jumlah kendaraan tiap baris.
+        </p>
+        <button class="btn btn-secondary" style="width:auto;padding:10px 24px" onclick="runBatch()">
+            ↻ Jalankan Ulang
+        </button>
+    </div>
+    <div class="card">
+        <div class="card-title">// Hasil Batch</div>
+        <div class="table-wrap">
+            <table class="ds-table">
+                <thead>
+                    <tr>
+                        <th>#</th><th>Hari</th><th>Waktu</th>
+                        <th>Kendaraan</th><th>Tunggu Auto (dtk)</th>
+                        <th>Hasil Fuzzy</th><th>Kategori</th>
+                    </tr>
+                </thead>
+                <tbody id="batchTbody">
+                    <tr><td colspan="7">
+                        <div class="loading-wrap">Klik tab untuk memuat...</div>
+                    </td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ===== TAB 4: ATURAN FUZZY ===== -->
+<div class="tab-panel" id="tab-rules">
+    <div class="main-grid">
+        <div class="card">
+            <div class="card-title">// Himpunan Fuzzy Input</div>
+            <table>
+                <thead><tr><th>Variabel</th><th>Himpunan</th><th>Range</th></tr></thead>
+                <tbody>
+                    <tr><td>Kendaraan</td><td><span class="dot dot-green"></span>Sedikit</td><td>[0, 0, 20]</td></tr>
+                    <tr><td></td>         <td><span class="dot dot-yellow"></span>Sedang</td><td>[10, 25, 40]</td></tr>
+                    <tr><td></td>         <td><span class="dot dot-red"></span>Banyak</td><td>[30, 50, 50]</td></tr>
+                    <tr><td>Waktu Tunggu</td><td><span class="dot dot-green"></span>Sebentar</td><td>[0, 0, 20]</td></tr>
+                    <tr><td></td>          <td><span class="dot dot-yellow"></span>Sedang</td><td>[10, 30, 50]</td></tr>
+                    <tr><td></td>          <td><span class="dot dot-red"></span>Lama</td><td>[40, 60, 60]</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="card">
+            <div class="card-title">// Himpunan Fuzzy Output</div>
+            <table>
+                <thead><tr><th>Variabel</th><th>Himpunan</th><th>Range</th></tr></thead>
+                <tbody>
+                    <tr><td>Lampu Hijau</td><td><span class="dot dot-green"></span>Cepat</td><td>[0, 0, 20]</td></tr>
+                    <tr><td></td>           <td><span class="dot dot-yellow"></span>Sedang</td><td>[10, 30, 50]</td></tr>
+                    <tr><td></td>           <td><span class="dot dot-red"></span>Lama</td><td>[40, 60, 60]</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="card full-col">
+            <div class="card-title">// Tabel Rules (9 Aturan)</div>
+            <table>
+                <thead><tr><th>#</th><th>IF Kendaraan</th><th>AND Waktu Tunggu</th><th>THEN Lampu Hijau</th></tr></thead>
+                <tbody>
+                    <tr><td>R1</td><td><span class="dot dot-green"></span>Sedikit</td><td><span class="dot dot-green"></span>Sebentar</td><td><span class="dot dot-green"></span>Cepat</td></tr>
+                    <tr><td>R2</td><td><span class="dot dot-green"></span>Sedikit</td><td><span class="dot dot-yellow"></span>Sedang</td><td><span class="dot dot-green"></span>Cepat</td></tr>
+                    <tr><td>R3</td><td><span class="dot dot-green"></span>Sedikit</td><td><span class="dot dot-red"></span>Lama</td><td><span class="dot dot-yellow"></span>Sedang</td></tr>
+                    <tr><td>R4</td><td><span class="dot dot-yellow"></span>Sedang</td><td><span class="dot dot-green"></span>Sebentar</td><td><span class="dot dot-green"></span>Cepat</td></tr>
+                    <tr><td>R5</td><td><span class="dot dot-yellow"></span>Sedang</td><td><span class="dot dot-yellow"></span>Sedang</td><td><span class="dot dot-yellow"></span>Sedang</td></tr>
+                    <tr><td>R6</td><td><span class="dot dot-yellow"></span>Sedang</td><td><span class="dot dot-red"></span>Lama</td><td><span class="dot dot-red"></span>Lama</td></tr>
+                    <tr><td>R7</td><td><span class="dot dot-red"></span>Banyak</td><td><span class="dot dot-green"></span>Sebentar</td><td><span class="dot dot-yellow"></span>Sedang</td></tr>
+                    <tr><td>R8</td><td><span class="dot dot-red"></span>Banyak</td><td><span class="dot dot-yellow"></span>Sedang</td><td><span class="dot dot-red"></span>Lama</td></tr>
+                    <tr><td>R9</td><td><span class="dot dot-red"></span>Banyak</td><td><span class="dot dot-red"></span>Lama</td><td><span class="dot dot-red"></span>Lama</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
