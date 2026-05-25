@@ -1,329 +1,327 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap');
+/* ============================================================
+   Smart Traffic Light — main.js
+   ============================================================ */
 
-:root {
-    --bg:           #0a0a0f;
-    --surface:      #13131a;
-    --surface2:     #1a1a24;
-    --border:       #1e1e2e;
-    --text:         #e8e8f0;
-    --muted:        #6b6b8a;
-    --accent:       #7c6af7;
-    --accent2:      #f7c26a;
-    --red:          #ff4545;
-    --yellow:       #f7c26a;
-    --green:        #45e87a;
-    --glow-red:     rgba(255,69,69,0.45);
-    --glow-yellow:  rgba(247,194,106,0.45);
-    --glow-green:   rgba(69,232,122,0.45);
-    --mono:         'Space Mono', monospace;
-    --sans:         'Syne', sans-serif;
+const ARAH = ['utara', 'selatan', 'timur', 'barat'];
+let animTimers         = [];
+let countdownIntervals = {};
+let simulasiJalan      = false;
+
+// ---------- Init: reset semua slider ke 0 saat halaman load ----------
+document.addEventListener('DOMContentLoaded', () => {
+    ARAH.forEach(a => {
+        const slider = document.getElementById(`k-${a}`);
+        if (slider) {
+            slider.value = 0;
+            updateKendaraan(a, 0);
+        }
+    });
+});
+
+// ---------- Waktu tunggu otomatis ----------
+function hitungWaktuAuto(k) {
+    return Math.round((k / 50) * 60);
 }
 
-*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
-
-body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--sans);
-    min-height: 100vh;
-    padding: 40px 20px 60px;
-    background-image:
-        radial-gradient(ellipse at 15% 15%, rgba(124,106,247,.07) 0%, transparent 55%),
-        radial-gradient(ellipse at 85% 85%, rgba(69,232,122,.04) 0%, transparent 55%);
+// ---------- Update slider ----------
+function updateKendaraan(arah, val) {
+    const k = parseInt(val);
+    document.getElementById(`valK-${arah}`).textContent  = k;
+    document.getElementById(`autoW-${arah}`).textContent = hitungWaktuAuto(k) + ' dtk';
 }
 
-header { text-align: center; margin-bottom: 44px; }
-
-header .badge {
-    display: inline-block;
-    font-family: var(--mono);
-    font-size: 11px;
-    letter-spacing: 3px;
-    color: var(--accent);
-    border: 1px solid var(--accent);
-    padding: 4px 14px;
-    border-radius: 20px;
-    margin-bottom: 14px;
-    text-transform: uppercase;
+// ---------- Tab Navigation ----------
+function switchTab(tabId) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelector(`[data-tab="${tabId}"]`).classList.add('active');
+    document.getElementById(tabId).classList.add('active');
+    if (tabId === 'tab-dataset') loadDataset();
+    if (tabId === 'tab-batch')   loadBatch();
 }
 
-header h1 { font-size: clamp(26px,5vw,46px); font-weight:800; letter-spacing:-1px; line-height:1.1; }
-header h1 span { color: var(--accent2); }
-header p { margin-top:10px; color:var(--muted); font-size:13px; font-family:var(--mono); }
-
-.tabs { display:flex; gap:8px; max-width:940px; margin:0 auto 24px; flex-wrap:wrap; }
-
-.tab-btn {
-    font-family: var(--mono);
-    font-size: 12px;
-    padding: 8px 20px;
-    border-radius: 8px;
-    border: 1px solid var(--border);
-    background: transparent;
-    color: var(--muted);
-    cursor: pointer;
-    transition: all .2s;
-    letter-spacing: 1px;
+// ---------- Utility ----------
+function setStatus(msg, cls = '') {
+    const el = document.getElementById('statusBar');
+    el.className = 'status-bar ' + cls;
+    el.innerHTML = msg;
 }
 
-.tab-btn.active, .tab-btn:hover {
-    border-color: var(--accent);
-    color: var(--accent);
-    background: rgba(124,106,247,.08);
+function setLampWarna(arah, warna) {
+    ['merah', 'kuning', 'hijau'].forEach(w => {
+        document.getElementById(`lm-${arah}-${w}`).className = 'lamp-mini';
+    });
+    if (warna === 'merah')  document.getElementById(`lm-${arah}-merah`).className  = 'lamp-mini active-red';
+    if (warna === 'kuning') document.getElementById(`lm-${arah}-kuning`).className = 'lamp-mini active-yellow';
+    if (warna === 'hijau')  document.getElementById(`lm-${arah}-hijau`).className  = 'lamp-mini active-green';
 }
 
-.tab-panel { display:none; max-width:940px; margin:0 auto; }
-.tab-panel.active { display:block; }
-
-.card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 28px;
+function setBtnState(jalan) {
+    document.getElementById('btnJalankan').disabled = jalan;
+    document.getElementById('btnStop').disabled     = !jalan;
 }
 
-.card-title {
-    font-size: 11px;
-    letter-spacing: 3px;
-    text-transform: uppercase;
-    color: var(--muted);
-    font-family: var(--mono);
-    margin-bottom: 24px;
+function clearAllAnim() {
+    animTimers.forEach(t => clearTimeout(t));
+    animTimers = [];
+    ARAH.forEach(a => {
+        if (countdownIntervals[a]) {
+            clearInterval(countdownIntervals[a]);
+            countdownIntervals[a] = null;
+        }
+    });
 }
 
-.main-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:20px; }
-@media (max-width:640px) { .main-grid { grid-template-columns:1fr; } }
-.full-col { grid-column: 1 / -1; }
-
-.input-group { margin-bottom: 16px; }
-
-.input-group label {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 13px;
-    color: var(--muted);
-    font-family: var(--mono);
-    margin-bottom: 10px;
+function resetVisual() {
+    ARAH.forEach(a => {
+        setLampWarna(a, 'merah');
+        document.getElementById(`hb-${a}`).classList.remove('aktif');
+        document.getElementById(`info-${a}`).textContent = '— dtk';
+    });
 }
 
-.input-group label .val { color:var(--accent2); font-weight:700; font-size:15px; }
-
-input[type="range"] {
-    -webkit-appearance: none;
-    width: 100%; height: 6px;
-    border-radius: 3px;
-    background: var(--border);
-    outline: none; cursor: pointer;
+// ---------- Stop Simulasi ----------
+function stopSimulasi() {
+    simulasiJalan = false;
+    clearAllAnim();
+    resetVisual();
+    setBtnState(false);
+    setStatus('⏹ Simulasi dihentikan', 'stopped');
 }
 
-input[type="range"]::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 20px; height: 20px;
-    border-radius: 50%;
-    background: var(--accent);
-    border: 3px solid var(--bg);
-    box-shadow: 0 0 10px rgba(124,106,247,.6);
-    cursor: pointer;
-    transition: transform .15s;
+// ---------- Hitung Perempatan ----------
+async function hitungPerempatan() {
+    clearAllAnim();
+    simulasiJalan = true;
+    setBtnState(true);
+    setStatus('<span class="spinner"></span> Menghitung fuzzy untuk 4 simpang...', 'running');
+
+    const hasil = {};
+
+    try {
+        for (const a of ARAH) {
+            const k = parseInt(document.getElementById(`k-${a}`).value);
+            const w = hitungWaktuAuto(k);
+
+            const res  = await fetch('/hitung', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ kendaraan: k, waktu: w })
+            });
+            const data = await res.json();
+            if (data.error) { setStatus('⚠ ' + data.error); setBtnState(false); return; }
+            hasil[a] = { ...data, waktu_auto: w };
+        }
+    } catch(e) {
+        setStatus('⚠ Gagal terhubung ke server');
+        setBtnState(false);
+        return;
+    }
+
+    // Urutkan dari durasi terpanjang ke terpendek
+    const urutan = [...ARAH].sort((a, b) => hasil[b].hasil - hasil[a].hasil);
+    const kuningDetik = 3;
+
+    // Hitung waktu tunggu akumulatif
+    let akumulasi = 0;
+    urutan.forEach((arah, idx) => {
+        hasil[arah].waktu_tunggu_antri = idx === 0 ? 0 : akumulasi;
+        akumulasi += Math.round(hasil[arah].hasil) + kuningDetik;
+    });
+
+    // Tampilkan hasil box
+    document.getElementById('hasilGrid').style.display = 'grid';
+    ARAH.forEach(a => {
+        document.getElementById(`hd-${a}`).textContent = hasil[a].hasil + ' dtk';
+        document.getElementById(`hk-${a}`).textContent = hasil[a].kat_lampu;
+        document.getElementById(`hw-${a}`).textContent =
+            hasil[a].waktu_tunggu_antri === 0
+                ? 'tunggu: langsung (giliran pertama)'
+                : `tunggu: ${hasil[a].waktu_tunggu_antri} dtk`;
+        document.getElementById(`info-${a}`).textContent =
+            hasil[a].waktu_tunggu_antri === 0
+                ? hasil[a].hasil + ' dtk'
+                : `⏳ ${hasil[a].waktu_tunggu_antri} dtk`;
+    });
+
+    setStatus('✓ Simulasi berjalan — lampu bergantian per simpang', 'done');
+    jalankanSiklus(hasil, urutan);
 }
 
-input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+// ---------- Siklus Bergantian ----------
+function jalankanSiklus(hasil, urutan) {
+    if (!simulasiJalan) return;
 
-.range-labels {
-    display: flex;
-    justify-content: space-between;
-    font-size: 10px;
-    color: var(--muted);
-    font-family: var(--mono);
-    margin-top: 6px;
+    const kuningDetik = 3;
+    let offset = 0;
+
+    urutan.forEach((arah, idx) => {
+        const hijauMs  = hasil[arah].hasil * 1000;
+        const kuningMs = kuningDetik * 1000;
+
+        animTimers.push(setTimeout(() => {
+            if (!simulasiJalan) return;
+
+            ARAH.forEach(a => {
+                if (countdownIntervals[a]) {
+                    clearInterval(countdownIntervals[a]);
+                    countdownIntervals[a] = null;
+                }
+                if (a !== arah) {
+                    setLampWarna(a, 'merah');
+                    document.getElementById(`hb-${a}`).classList.remove('aktif');
+                    const idxA = urutan.indexOf(a);
+                    if (idxA > idx) {
+                        let sisaTunggu = 0;
+                        for (let i = idx; i < idxA; i++) {
+                            sisaTunggu += Math.round(hasil[urutan[i]].hasil) + kuningDetik;
+                        }
+                        document.getElementById(`info-${a}`).textContent = `⏳ ${sisaTunggu} dtk`;
+                    } else if (idxA < idx) {
+                        let sisaSiklus = 0;
+                        for (let i = idx; i < urutan.length; i++) {
+                            sisaSiklus += Math.round(hasil[urutan[i]].hasil) + kuningDetik;
+                        }
+                        for (let i = 0; i < idxA; i++) {
+                            sisaSiklus += Math.round(hasil[urutan[i]].hasil) + kuningDetik;
+                        }
+                        document.getElementById(`info-${a}`).textContent = `⏳ ${sisaSiklus} dtk`;
+                    }
+                }
+            });
+
+            setLampWarna(arah, 'hijau');
+            document.getElementById(`hb-${arah}`).classList.add('aktif');
+            setStatus(`🟢 Simpang ${arah.charAt(0).toUpperCase() + arah.slice(1)} HIJAU — ${hasil[arah].hasil} detik`, 'done');
+
+            let sisa = Math.round(hasil[arah].hasil);
+            document.getElementById(`info-${arah}`).textContent = `${sisa} dtk`;
+
+            countdownIntervals[arah] = setInterval(() => {
+                if (!simulasiJalan) { clearInterval(countdownIntervals[arah]); return; }
+                sisa--;
+
+                ARAH.forEach(a => {
+                    if (a !== arah) {
+                        const idxA = urutan.indexOf(a);
+                        if (idxA > idx) {
+                            let sisaTunggu = sisa;
+                            for (let i = idx + 1; i < idxA; i++) {
+                                sisaTunggu += Math.round(hasil[urutan[i]].hasil) + kuningDetik;
+                            }
+                            sisaTunggu += kuningDetik;
+                            if (sisaTunggu > 0) {
+                                document.getElementById(`info-${a}`).textContent = `⏳ ${sisaTunggu} dtk`;
+                            }
+                        }
+                    }
+                });
+
+                document.getElementById(`info-${arah}`).textContent = sisa > 0 ? `${sisa} dtk` : '0 dtk';
+                if (sisa <= 0) { clearInterval(countdownIntervals[arah]); countdownIntervals[arah] = null; }
+            }, 1000);
+
+            animTimers.push(setTimeout(() => {
+                if (!simulasiJalan) return;
+                setLampWarna(arah, 'kuning');
+                setStatus(`🟡 Simpang ${arah.charAt(0).toUpperCase() + arah.slice(1)} KUNING...`, 'running');
+                document.getElementById(`info-${arah}`).textContent = '🟡 3 dtk';
+            }, hijauMs));
+
+        }, offset));
+
+        offset += hijauMs + kuningMs;
+    });
+
+    animTimers.push(setTimeout(() => {
+        if (!simulasiJalan) return;
+        resetVisual();
+        setStatus('🔄 Siklus selesai — mengulang...', '');
+
+        urutan.forEach((arah, idx) => {
+            let tungguAwal = 0;
+            for (let i = 0; i < idx; i++) {
+                tungguAwal += Math.round(hasil[urutan[i]].hasil) + kuningDetik;
+            }
+            document.getElementById(`info-${arah}`).textContent =
+                idx === 0 ? hasil[arah].hasil + ' dtk' : `⏳ ${tungguAwal} dtk`;
+        });
+
+        animTimers.push(setTimeout(() => {
+            if (simulasiJalan) jalankanSiklus(hasil, urutan);
+        }, 2000));
+    }, offset));
 }
 
-.auto-waktu-box {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 8px 12px;
-    margin-top: 4px;
+// ---------- Dataset ----------
+let datasetLoaded = false;
+
+async function loadDataset() {
+    if (datasetLoaded) return;
+    try {
+        const res   = await fetch('/dataset/stats');
+        const stats = await res.json();
+        document.getElementById('statTotal').textContent     = stats.total_data;
+        document.getElementById('statMaxKend').textContent   = stats.max_kendaraan;
+        document.getElementById('statAvgKend').textContent   = stats.avg_kendaraan;
+        document.getElementById('statHariSibuk').textContent = stats.hari_tersibuk;
+    } catch(e) { console.error(e); }
+
+    try {
+        const res  = await fetch('/dataset');
+        const rows = await res.json();
+        const tbody = document.getElementById('dsTbody');
+        tbody.innerHTML = '';
+        rows.forEach(r => {
+            const wAuto = hitungWaktuAuto(r.kendaraan_norm);
+            const cc = { 'Cerah':'badge-cerah','Berawan':'badge-berawan','Hujan':'badge-hujan','Macet':'badge-macet' }[r.kondisi_cuaca] || '';
+            tbody.innerHTML += `
+                <tr>
+                    <td>${r.id}</td><td>${r.hari}</td><td>${r.waktu}</td>
+                    <td>${r.jumlah_kendaraan_asli.toLocaleString()}</td>
+                    <td><strong>${r.kendaraan_norm}</strong></td>
+                    <td style="color:var(--green)">${wAuto}</td>
+                    <td class="${cc}">${r.kondisi_cuaca}</td>
+                </tr>`;
+        });
+        datasetLoaded = true;
+    } catch(e) {
+        document.getElementById('dsTbody').innerHTML =
+            '<tr><td colspan="7" style="text-align:center;color:var(--muted)">Gagal memuat</td></tr>';
+    }
 }
 
-.auto-label { font-family:var(--mono); font-size:10px; color:var(--muted); letter-spacing:1px; }
-.auto-val   { font-family:var(--mono); font-size:13px; font-weight:700; color:var(--green); }
+// ---------- Batch ----------
+let batchLoaded = false;
 
-/* Tombol group */
-.btn-group {
-    display: flex;
-    gap: 12px;
-    max-width: 500px;
-    margin: 0 auto;
+async function loadBatch() {
+    if (batchLoaded) return;
+    runBatch();
 }
 
-.btn {
-    flex: 1;
-    padding: 13px;
-    border: none;
-    border-radius: 10px;
-    font-size: 14px;
-    font-family: var(--sans);
-    font-weight: 700;
-    cursor: pointer;
-    letter-spacing: 1px;
-    transition: all .2s;
-    margin-top: 6px;
+async function runBatch() {
+    batchLoaded = false;
+    document.getElementById('batchTbody').innerHTML =
+        '<tr><td colspan="7"><div class="loading-wrap"><span class="spinner"></span> Memproses...</div></td></tr>';
+    try {
+        const res     = await fetch('/dataset/batch', { method: 'POST' });
+        const results = await res.json();
+        const tbody   = document.getElementById('batchTbody');
+        tbody.innerHTML = '';
+        results.forEach(r => {
+            const kc = { 'Cepat':'dot-green','Sedang':'dot-yellow','Lama':'dot-red' }[r.kategori] || '';
+            tbody.innerHTML += `
+                <tr>
+                    <td>${r.id}</td><td>${r.hari}</td><td>${r.waktu}</td>
+                    <td>${r.kendaraan}</td>
+                    <td style="color:var(--green)">${r.waktu_tunggu}</td>
+                    <td class="fuzzy-result">${r.hasil_fuzzy} dtk</td>
+                    <td><span class="dot ${kc}"></span>${r.kategori}</td>
+                </tr>`;
+        });
+        batchLoaded = true;
+    } catch(e) {
+        document.getElementById('batchTbody').innerHTML =
+            '<tr><td colspan="7" style="text-align:center;color:var(--muted)">Gagal memproses</td></tr>';
+    }
 }
-
-.btn-primary { background: var(--accent); color: #fff; }
-.btn-primary:hover { background:#9585ff; box-shadow:0 0 20px rgba(124,106,247,.4); transform:translateY(-1px); }
-.btn-primary:disabled { opacity:.4; cursor:not-allowed; transform:none; box-shadow:none; }
-
-.btn-stop {
-    background: transparent;
-    color: var(--red);
-    border: 1.5px solid var(--red);
-}
-
-.btn-stop:hover:not(:disabled) {
-    background: rgba(255,69,69,.12);
-    box-shadow: 0 0 16px rgba(255,69,69,.3);
-    transform: translateY(-1px);
-}
-
-.btn-stop:disabled { opacity:.3; cursor:not-allowed; transform:none; }
-.btn:active:not(:disabled) { transform: translateY(0); }
-
-.btn-secondary {
-    background: var(--surface2);
-    color: var(--text);
-    border: 1px solid var(--border);
-    flex: unset;
-}
-
-.btn-secondary:hover { border-color:var(--accent2); color:var(--accent2); }
-
-.status-bar {
-    font-family: var(--mono);
-    font-size: 12px;
-    color: var(--muted);
-    text-align: center;
-    margin-top: 8px;
-    min-height: 18px;
-    transition: color .3s;
-}
-
-.status-bar.running { color: var(--accent2); }
-.status-bar.done    { color: var(--green); }
-.status-bar.stopped { color: var(--red); }
-
-@keyframes spin { to { transform: rotate(360deg); } }
-.spinner {
-    display: inline-block;
-    width: 12px; height: 12px;
-    border: 2px solid var(--border);
-    border-top-color: var(--accent2);
-    border-radius: 50%;
-    animation: spin .6s linear infinite;
-    vertical-align: middle;
-    margin-right: 6px;
-}
-
-table { width:100%; border-collapse:collapse; font-family:var(--mono); font-size:12px; }
-th { text-align:left; padding:10px 14px; color:var(--muted); border-bottom:1px solid var(--border); font-weight:400; letter-spacing:1px; text-transform:uppercase; font-size:10px; }
-td { padding:10px 14px; border-bottom:1px solid rgba(255,255,255,.04); }
-tr:hover td { background: rgba(255,255,255,.02); }
-
-.dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; vertical-align:middle; }
-.dot-green  { background: var(--green); }
-.dot-yellow { background: var(--yellow); }
-.dot-red    { background: var(--red); }
-
-.stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px; margin-bottom:20px; }
-
-.stat-box { background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:18px 16px; text-align:center; }
-.stat-val  { font-size:26px; font-weight:800; color:var(--accent2); line-height:1; }
-.stat-lbl  { font-family:var(--mono); font-size:10px; color:var(--muted); margin-top:6px; letter-spacing:1px; text-transform:uppercase; }
-
-.table-wrap { overflow-x:auto; border-radius:10px; border:1px solid var(--border); }
-
-.ds-table { width:100%; border-collapse:collapse; font-family:var(--mono); font-size:12px; min-width:600px; }
-.ds-table th { background:var(--surface2); padding:10px 14px; text-align:left; font-size:10px; letter-spacing:1px; color:var(--muted); border-bottom:1px solid var(--border); }
-.ds-table td { padding:9px 14px; border-bottom:1px solid rgba(255,255,255,.03); color:var(--text); }
-.ds-table tr:hover td { background: rgba(255,255,255,.03); }
-
-.badge-cerah   { color:#45e87a; }
-.badge-berawan { color:var(--accent2); }
-.badge-hujan   { color:#6ac8f7; }
-.badge-macet   { color:var(--red); }
-.fuzzy-result  { font-weight:700; color:var(--accent2); }
-
-.loading-wrap { text-align:center; padding:40px; font-family:var(--mono); color:var(--muted); font-size:13px; }
-
-/* ====== PEREMPATAN ====== */
-.four-input-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:20px; }
-@media (max-width:760px) { .four-input-grid { grid-template-columns:repeat(2,1fr); } }
-
-.simpang-input { background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:16px; }
-.simpang-label { font-family:var(--mono); font-size:12px; color:var(--accent2); letter-spacing:2px; margin-bottom:14px; font-weight:700; }
-
-.perempatan-wrap { position:relative; width:340px; height:340px; margin:0 auto 24px; }
-
-.tengah-persimpangan { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:100px; height:100px; pointer-events:none; }
-
-.jalan { position:absolute; background:#1e1e2e; }
-
-.jalan-vertikal {
-    width:40px; height:340px;
-    left:50%; top:50%;
-    transform:translate(-50%,-50%);
-    border-left:2px dashed #2a2a40;
-    border-right:2px dashed #2a2a40;
-}
-
-.jalan-horizontal {
-    width:340px; height:40px;
-    top:50%; left:50%;
-    transform:translate(-50%,-50%);
-    border-top:2px dashed #2a2a40;
-    border-bottom:2px dashed #2a2a40;
-}
-
-.pusat-dot {
-    position:absolute; width:24px; height:24px;
-    border-radius:50%; background:#2a2a40;
-    border:2px solid #3a3a55;
-    top:50%; left:50%; transform:translate(-50%,-50%); z-index:2;
-}
-
-.simpang-box { position:absolute; display:flex; flex-direction:column; align-items:center; gap:6px; z-index:3; }
-.pos-utara   { top:0;    left:50%; transform:translateX(-50%); }
-.pos-selatan { bottom:0; left:50%; transform:translateX(-50%); }
-.pos-barat   { left:0;   top:50%;  transform:translateY(-50%); }
-.pos-timur   { right:0;  top:50%;  transform:translateY(-50%); }
-
-.simpang-nama { font-family:var(--mono); font-size:10px; letter-spacing:2px; color:var(--muted); text-transform:uppercase; }
-
-.tiang-mini { background:#1a1a28; border:1.5px solid #2a2a40; border-radius:8px; padding:8px 10px; display:flex; flex-direction:column; gap:6px; align-items:center; }
-.tiang-horiz { flex-direction:row; padding:10px 8px; }
-
-.lamp-mini { width:22px; height:22px; border-radius:50%; background:#0f0f1a; border:1.5px solid #1e1e30; transition:all .4s ease; }
-.lamp-mini.active-red    { background:var(--red);    border-color:var(--red);    box-shadow:0 0 10px var(--glow-red); }
-.lamp-mini.active-yellow { background:var(--yellow); border-color:var(--yellow); box-shadow:0 0 10px var(--glow-yellow); }
-.lamp-mini.active-green  { background:var(--green);  border-color:var(--green);  box-shadow:0 0 10px var(--glow-green); }
-
-.simpang-info { font-family:var(--mono); font-size:11px; color:var(--accent2); font-weight:700; }
-
-.hasil-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-top:20px; padding-top:20px; border-top:1px solid var(--border); }
-@media (max-width:640px) {
-    .hasil-grid { grid-template-columns:repeat(2,1fr); }
-    .perempatan-wrap { width:280px; height:280px; }
-}
-
-.hasil-box { background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:14px; text-align:center; transition:border-color .3s; }
-.hasil-box.aktif { border-color: var(--green); }
-
-.hasil-arah       { font-family:var(--mono); font-size:10px; color:var(--muted); letter-spacing:2px; margin-bottom:6px; }
-.hasil-durasi     { font-size:22px; font-weight:800; color:var(--accent2); line-height:1; }
-.hasil-kat        { font-family:var(--mono); font-size:10px; color:var(--muted); margin-top:4px; }
-.hasil-waktu-auto { font-family:var(--mono); font-size:10px; color:var(--green); margin-top:4px; }  
